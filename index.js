@@ -103,7 +103,10 @@ function MqttSwitchTasmotaAccessory(log, config) {
 		}
 	});
 
-	this.client.on('message', function(topic, message) {
+	this.client.on('message', function (topic, message) {
+		that.log('topic', topic);
+		that.log('message', message);
+		var currentStatus = that.switchStatus;
 		if (topic == that.topicStatusGet) {
 			try {
 				// In the event that the user has a DUAL the topicStatusGet will return for POWER1 or POWER2 in the JSON.  
@@ -113,34 +116,49 @@ function MqttSwitchTasmotaAccessory(log, config) {
 				var status = data.POWER;
 				if (data.hasOwnProperty(that.powerValue))
 					status = data[that.powerValue];
+
+	            that.log("status", status);
 				if (status !== undefined) {
-					that.switchStatus = (status == that.onValue);
-				  	that.log(that.name, "(",that.powerValue,") - Power from Status", status); //TEST ONLY
+					currentStatus = (status == that.onValue);
+					that.log(that.name, "(", that.powerValue, ") - Power from Status", status); //TEST ONLY
 				}
 			} catch (e) {
+				that.log("error", e);
 				var status = message.toString();
 
-				that.switchStatus = (status == that.onValue);
+				currentStatus = (status == that.onValue);
 			}
-			that.service.getCharacteristic(Characteristic.On).setValue(that.switchStatus, undefined, 'fromSetValue');
-		}
 
-		if (topic == that.topicsStateGet) {
-			try {
-				var data = JSON.parse(message);
-				if (data.hasOwnProperty(that.powerValue)) {
-					var status = data[that.powerValue];
-					that.log(that.name, "(",that.powerValue,") - Power from State", status); //TEST ONLY
-					that.switchStatus = (status == that.onValue);
-					that.service.getCharacteristic(Characteristic.On).setValue(that.switchStatus, undefined, '');
-				}
-			} catch (e) {}
-		} else if (topic == that.activityTopic) {
-			var status = message.toString();
-			that.activeStat = (status == that.activityParameter);
-			that.service.setCharacteristic(Characteristic.StatusActive, that.activeStat);
+		if (currentStatus !== that.switchStatus) {
+				that.log('Sending setValue message with status', that.switchStatus);
+				that.service.getCharacteristic(Characteristic.On).setValue(that.switchStatus, undefined, 'fromSetValue');
+			}
 		}
+	
+	    if (topic == that.topicsStateGet) {
+	        that.log('Entered second condition (topic == that.topicsStateGet)')
+	        try {
+	            var data = JSON.parse(message);
+	            if (data.hasOwnProperty(that.powerValue)) {
+	                var status = data[that.powerValue];
+	                that.log(that.name, "(", that.powerValue, ") - Power from State", status); //TEST ONLY
+	                currentStatus = (status == that.onValue);
+	                if (currentStatus !== that.switchStatus) {
+	                    that.log('Sending setValue message with status', that.switchStatus);
+	                    that.service.getCharacteristic(Characteristic.On).setValue(that.switchStatus, undefined, '');
+	                }
+	            }
+	        } catch (e) { 
+	            that.log("error in topicsStateGet", e);
+	        }
+	    } else if (topic == that.activityTopic) {
+	        that.log("topic == that.activityTopic");
+	        var status = message.toString();
+	        that.activeStat = (status == that.activityParameter);
+	        that.service.setCharacteristic(Characteristic.StatusActive, that.activeStat);
+	    }
 	});
+	
 	this.client.subscribe(this.topicStatusGet);
 	if (this.topicsStateGet !== "") {
 		this.client.subscribe(this.topicsStateGet);
